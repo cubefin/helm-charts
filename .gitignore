@@ -1,0 +1,12 @@
+# Helm
+Chart.lock
+*.tgz
+*.tar.gz
+
+# IDE
+.vscode
+.idea
+*.iml
+
+# OS
+.DS_Store

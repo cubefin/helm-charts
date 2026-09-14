@@ -1,0 +1,73 @@
+name: Release Charts to GHCR
+
+on:
+    push:
+        branches:
+            - main
+        paths:
+            - "charts/**"
+    workflow_dispatch:
+
+env:
+    REGISTRY: ghcr.io
+    OWNER: ${{ github.repository_owner }}
+
+jobs:
+    release:
+        # Don't re-run on the version-bump commit this workflow makes itself
+        # (belt-and-suspenders — pushes made with the default GITHUB_TOKEN
+        # don't normally re-trigger workflows anyway, but just in case).
+        if: "!contains(github.event.head_commit.message, '[skip ci]')"
+        runs-on: ubuntu-latest
+        permissions:
+            # write, not read — this job commits the version bump back to the repo
+            contents: write
+            packages: write
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Install Helm
+              uses: azure/setup-helm@v4
+
+            # Auto-bump so every push that touches charts/cubefin-iam publishes
+            # under a new, distinct version — without this, re-pushing the same
+            # `version:` from Chart.yaml silently overwrites the existing OCI tag,
+            # so `--version X.Y.Z` stops meaning a fixed, reproducible chart.
+            # NOTE: only handles charts/cubefin-iam — if more charts get added
+            # back to this repo, this needs to loop over each one individually
+            # (and only bump the ones that actually changed).
+            - name: Bump cubefin-iam patch version
+              id: bump
+              run: |
+                  CHART_FILE="charts/cubefin-iam/Chart.yaml"
+                  CURRENT=$(grep '^version:' "$CHART_FILE" | awk '{print $2}')
+                  MAJOR=$(echo "$CURRENT" | cut -d. -f1)
+                  MINOR=$(echo "$CURRENT" | cut -d. -f2)
+                  PATCH=$(echo "$CURRENT" | cut -d. -f3)
+                  NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+                  sed -i "s/^version: .*/version: ${NEW_VERSION}/" "$CHART_FILE"
+                  echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+                  echo "Bumped cubefin-iam: ${CURRENT} -> ${NEW_VERSION}"
+
+            - name: Commit version bump
+              run: |
+                  git config user.name "github-actions[bot]"
+                  git config user.email "github-actions[bot]@users.noreply.github.com"
+                  git add charts/cubefin-iam/Chart.yaml
+                  git commit -m "chore: bump cubefin-iam to ${{ steps.bump.outputs.version }} [skip ci]"
+                  git push
+
+            - name: Login to GitHub Container Registry
+              run: |
+                  echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+
+            - name: Package and Push Cubefin IAM
+              run: |
+                  # Lowercase owner for image referencing
+                  OWNER_LOWER=$(echo "${{ env.OWNER }}" | tr '[:upper:]' '[:lower:]')
+
+                  helm package charts/cubefin-iam --dependency-update
+                  CHART_PACKAGE=$(ls cubefin-iam-*.tgz)
+                  helm push $CHART_PACKAGE oci://${{ env.REGISTRY }}/$OWNER_LOWER

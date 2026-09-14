@@ -1,0 +1,6 @@
+apiVersion: v2
+name: age
+description: A Helm chart for Apache AGE (PostgreSQL with Graph Extension)
+type: application
+version: 0.1.0
+appVersion: "latest"

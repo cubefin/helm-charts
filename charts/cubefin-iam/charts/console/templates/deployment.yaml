@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "console.fullname" . }}
+  labels:
+    {{- include "console.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "console.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "console.selectorLabels" . | nindent 8 }}
+      annotations:
+        redeploy-timestamp: "2026-02-12T16:40:00"
+    spec:
+      imagePullSecrets:
+        {{- if .Values.global.registryCredentials.enabled }}
+        - name: {{ .Values.global.registryCredentials.name }}
+        {{- end }}
+        {{- if .Values.global.imagePullSecrets }}
+        {{- toYaml .Values.global.imagePullSecrets | nindent 8 }}
+        {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: NEXT_PUBLIC_OIDC_AUTHORITY
+              value: {{ .Values.global.oidc.issuer | quote }}
+            - name: NEXT_PUBLIC_OIDC_CLIENT_ID
+              value: {{ .Values.global.oidc.clientId | quote }}
+            - name: NEXT_PUBLIC_OIDC_SCOPE
+              value: {{ .Values.config.oidc.scope | quote }}
+            - name: EDGE_SERVICE_URL
+              value: {{ .Values.config.edgeServiceUrl | default (printf "http://%s-edge:8080" .Release.Name) | quote }}
+            {{- if .Values.global.otel.enabled }}
+            - name: NODE_OPTIONS
+              value: "--require /otel-auto-instrumentation/autoinstrumentation.js"
+            - name: OTEL_TRACES_EXPORTER
+              value: "otlp"
+            - name: OTEL_METRICS_EXPORTER
+              value: "none"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.global.otel.endpoint | quote }}
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "grpc"
+            - name: OTEL_SERVICE_NAME
+              value: "iam-console"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "service.name=iam-console,service.namespace={{ .Release.Namespace }}"
+            {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            {{- if .Values.global.otel.enabled }}
+            - name: opentelemetry-auto-instrumentation
+              mountPath: /otel-auto-instrumentation
+            {{- end }}
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        {{- if .Values.global.otel.enabled }}
+        - name: opentelemetry-auto-instrumentation
+          emptyDir: {}
+        {{- end }}
+      {{- if .Values.global.otel.enabled }}
+      initContainers:
+        - name: opentelemetry-auto-instrumentation
+          image: {{ .Values.global.otel.nodejsImage }}
+          command: ["cp", "-a", "/autoinstrumentation/.", "/otel-auto-instrumentation/"]
+          volumeMounts:
+            - name: opentelemetry-auto-instrumentation
+              mountPath: /otel-auto-instrumentation
+      {{- end }}

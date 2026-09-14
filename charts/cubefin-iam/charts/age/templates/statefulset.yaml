@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "age.fullname" . }}
+  labels:
+    {{- include "age.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "age.fullname" . }}
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "age.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "age.selectorLabels" . | nindent 8 }}
+    spec:
+      imagePullSecrets:
+        {{- if .Values.global.registryCredentials.enabled }}
+        - name: {{ .Values.global.registryCredentials.name }}
+        {{- end }}
+        {{- if .Values.global.imagePullSecrets }}
+        {{- toYaml .Values.global.imagePullSecrets | nindent 8 }}
+        {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: postgresql
+              containerPort: 5432
+              protocol: TCP
+          env:
+            - name: POSTGRES_PASSWORD
+              value: {{ .Values.postgresql.password | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.postgresql.user | quote }}
+            - name: POSTGRES_DB
+              value: {{ .Values.postgresql.db | quote }}
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - {{ .Values.postgresql.user | quote }}
+                - -d
+                - {{ .Values.postgresql.db | quote }}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - {{ .Values.postgresql.user | quote }}
+                - -d
+                - {{ .Values.postgresql.db | quote }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "age.fullname" . }}-pvc
+        - name: init-scripts
+          configMap:
+            name: {{ include "age.fullname" . }}-init-scripts

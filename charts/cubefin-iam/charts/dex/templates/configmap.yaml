@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "dex.fullname" . }}-config
+  labels:
+    {{- include "dex.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    issuer: {{ .Values.issuer }}
+
+    storage:
+      type: memory
+
+    web:
+      http: 0.0.0.0:5556
+      # oidc-client-ts/react-oidc-context fetch() the discovery doc + JWKS
+      # from the browser before redirecting, so this needs real CORS headers
+      # — without it, login fails with an opaque "blocked by CORS policy"
+      # console error rather than anything visible server-side. Reuses the
+      # same hosts as staticClient.redirectURIs since that's already every
+      # origin that legitimately calls Dex from a browser.
+      allowedOrigins:
+        {{- range .Values.staticClient.redirectURIs }}
+        - {{ . | quote }}
+        {{- end }}
+
+    oauth2:
+      skipApprovalScreen: true
+
+    staticClients:
+      - id: {{ .Values.staticClient.id | quote }}
+        name: {{ .Values.staticClient.name | quote }}
+        public: {{ .Values.staticClient.public }}
+        redirectURIs:
+          {{- range .Values.staticClient.redirectURIs }}
+          - {{ . | quote }}
+          {{- end }}
+
+    enablePasswordDB: true
+    staticPasswords:
+      {{- range .Values.demoUsers }}
+      - email: {{ .email | quote }}
+        hash: {{ .hash | quote }}
+        username: {{ .username | quote }}
+        userID: {{ .userID | quote }}
+      {{- end }}

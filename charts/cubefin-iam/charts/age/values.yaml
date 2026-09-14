@@ -1,0 +1,38 @@
+# Default values for age — PostgreSQL + Apache AGE (graph extension), the storage layer
+# behind fga's ReBAC checks. Deployed as a single-instance StatefulSet with a PVC; there's
+# no HA/replication here, this is meant to be a small dedicated graph store, not a general
+# -purpose Postgres.
+
+# Number of replicas. Leave at 1 — Apache AGE / this chart don't support clustering.
+replicaCount: 1
+
+image:
+  repository: apache/age
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  # Standard Postgres port. edge/fga connect here by default (see their
+  # config.*.host — empty string means "use this internal service").
+  port: 5432
+
+postgresql:
+  # Superuser password. Change this for anything beyond a local demo — it's
+  # used directly by edge/fga's datasource config too (config.datasource.password
+  # / config.audit.db.password in the parent values.yaml), so update both together.
+  password: password
+  user: postgres
+  db: postgres
+  # PVC size for the graph + audit data. Grows with your ReBAC relationship
+  # graph and audit log — bump this before it's needed, the PVC isn't
+  # auto-resized.
+  storage: 1Gi
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

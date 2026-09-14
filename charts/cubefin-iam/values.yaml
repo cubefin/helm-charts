@@ -1,0 +1,215 @@
+global:
+  # 1. New Secret Creation (Auto-generated if enabled)
+  registryCredentials:
+    enabled: false
+    name: "cubefin-registry-key"
+    registry: ghcr.io
+    username: ""
+    password: ""
+
+  # 2. Use Existing Secrets (List of secret names) — leave empty for public images.
+  # Only add entries here (or enable registryCredentials above) if your images
+  # are private.
+  imagePullSecrets: []
+
+  # OIDC Identity Provider Settings.
+  # These are plain, vendor-neutral OIDC fields (standard "issuer" + OAuth2
+  # client_id/client_secret) — edge/fga only use quarkus-oidc's standard
+  # discovery (.well-known/openid-configuration), no provider-specific code.
+  # Defaults below point at the bundled Dex (see dex.* section) so a fresh
+  # `helm install` gives you a working login out of the box. For a real
+  # deployment: set dex.enabled=false and point these at your own IdP
+  # (Keycloak, Auth0, Cognito, Google, ...) — e.g. for Keycloak:
+  #   issuer: "https://<your-keycloak>/realms/<realm>"
+  oidc:
+    issuer: "https://idp.example.com"
+    clientId: "cubefin-client"
+    # Unused when the bundled Dex client is public (default) — Dex ignores the
+    # secret for public/PKCE clients. Set a real value when pointing at a
+    # confidential-client IdP.
+    clientSecret: "change-me-secret"
+    # JWKS path appended to `issuer` for MP-JWT bearer-token verification in
+    # edge/fga. This differs per provider — Dex serves it at "/keys" (default,
+    # matches the bundled IdP). Override when swapping providers, e.g.
+    # Keycloak: "/protocol/openid-connect/certs".
+    jwksPath: "/keys"
+    # Base URL edge/fga use for server-to-server OIDC discovery + JWKS fetch —
+    # separate from `issuer` above (which is what browsers redirect to and what
+    # gets validated in the iss/aud claims). Left blank, this is auto-derived
+    # to the bundled Dex's in-cluster Service when dex.enabled=true (see
+    # dexEnabled/dexPort below), because the public `issuer` hostname is
+    # frequently *not* reachable from inside the cluster (hairpin NAT — a
+    # cluster can't always route back to its own public ingress hostname),
+    # which fails as "OIDC Server is not available" even though browser-facing
+    # login works fine. Set this explicitly if dex.enabled=false and your own
+    # IdP needs a different in-cluster address than its public `issuer`.
+    internalIssuer: ""
+
+  # Mirrors dex.enabled / dex.service.port for edge/fga's internalIssuer
+  # fallback above. Duplicated here (not read from dex.* directly) because
+  # Helm subcharts can only see `global.*`, not sibling subcharts' values —
+  # keep these two in sync if you change dex.enabled or dex.service.port.
+  dexEnabled: true
+  dexPort: 5556
+
+  # OpenTelemetry Instrumentation Settings
+  otel:
+    enabled: false
+    javaImage: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java:latest
+    nodejsImage: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-nodejs:latest
+    endpoint: "http://cubefin-lens-otel.cubefin.svc.cluster.local:4317"
+
+# Sub-chart settings (managed from root).
+# Note: `enabled` under age/edge/fga/console below is informational only — every core
+# component is always installed (they depend on each other). `dex.enabled` is the one
+# real, wired toggle (see the dex section) since it's the one piece meant to be swapped out.
+
+# 1. Database (Apache AGE = PostgreSQL + Graph Extension)
+age:
+  enabled: true
+  image:
+    repository: apache/age
+    tag: latest
+  postgresql:
+    # Change this for anything beyond a local demo. Also used directly by
+    # edge.config.audit.db.password and fga.config.datasource.password below
+    # — keep all three in sync.
+    password: password
+    user: postgres
+    db: postgres
+    # PVC size — not auto-resized, bump before you need it.
+    storage: 5Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# 2. Edge Service (Security Gateway & Routing)
+edge:
+  enabled: true
+  image:
+    repository: ghcr.io/cubefin/iam-edge
+    tag: latest
+  service:
+    port: 8080
+  config:
+    # FGA Service connection (defaults to internal service if empty)
+    fgaUrl: "" 
+    # Audit Database connection (defaults to internal 'age' service if empty)
+    audit:
+      db:
+        host: ""
+        database: postgres
+        username: postgres
+        password: password
+    
+    # Gateway Routing Rules (Zuul/Spring Cloud Gateway Style)
+    # Add your microservices here. System routes (FGA) are managed automatically.
+    additionalRoutes: []
+  
+  ingress:
+    # Off by default — console talks to edge over the internal ClusterIP
+    # (see console.config.edgeServiceUrl), so nothing needs edge to be
+    # publicly reachable unless you're routing external microservices
+    # through it via config.additionalRoutes above. Turn this on + set
+    # host once you actually have something for it to front.
+    enabled: false
+    className: "nginx"
+    host: "edge.example.com"
+    annotations: {}
+    tls:
+      enabled: false
+      secretName: ""
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# 3. FGA Service (Fine-Grained Authorization)
+fga:
+  enabled: true
+  image:
+    repository: ghcr.io/cubefin/iam-fga
+    tag: latest
+  service:
+    port: 8080
+  config:
+    # Authorization Database connection (defaults to internal 'age' service if empty)
+    datasource:
+      host: ""
+      database: postgres
+      username: postgres
+      password: password
+    # Optional: Override global OIDC settings for FGA service
+    oidc:
+      clientId: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# 4. Console (Next.js Web UI)
+console:
+  enabled: true
+  image:
+    repository: ghcr.io/cubefin/iam-console
+    tag: latest
+  service:
+    port: 3000
+  config:
+    # Gateway connection (defaults to internal 'edge' service if empty)
+    edgeServiceUrl: ""
+    oidc:
+      # "groups", not "roles" — matches what the bundled Dex actually
+      # supports (check <issuer>/.well-known/openid-configuration's
+      # scopes_supported for whatever IdP you're using; Keycloak uses
+      # "roles" instead, for example — unrecognized scopes are hard errors
+      # for most providers, not just ignored).
+      scope: "openid profile email groups"
+
+  ingress:
+    enabled: true
+    className: "nginx"
+    host: "auth.example.com"
+    annotations: {}
+    tls:
+      enabled: false
+      secretName: ""
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# 5. Dex (bundled reference OIDC provider — see charts/dex/values.yaml for full options)
+# Default ON so `helm install` produces something you can log into immediately
+# with the built-in demo accounts. Set enabled=false for a real deployment and
+# point global.oidc.* at your own IdP instead.
+dex:
+  enabled: true
+  ingress:
+    host: "idp.example.com"
+  issuer: "https://idp.example.com"
+  staticClient:
+    id: "cubefin-client"
+    # Must match console.ingress.host above (scheme + host, no trailing slash/path)
+    redirectURIs:
+      - "https://auth.example.com"
+  # demoUsers is intentionally NOT restated here — Helm replaces (not merges)
+  # list values, so a partial copy here (e.g. missing `hash`/`userID`) would
+  # silently blank those fields out in the subchart's real defaults instead
+  # of layering on top of them. See charts/dex/values.yaml for the full list,
+  # credentials, and the TOFU/"log in with [0] first" note.

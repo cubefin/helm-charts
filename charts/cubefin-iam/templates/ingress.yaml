@@ -1,0 +1,33 @@
+{{- if .Values.console.ingress.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "auth.fullname" . }}-console
+  labels:
+    {{- include "auth.labels" . | nindent 4 }}
+  annotations:
+    {{- with .Values.console.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/ssl-redirect: {{ .Values.console.ingress.tls.enabled | quote }}
+spec:
+  ingressClassName: {{ .Values.console.ingress.className | default "nginx" }}
+  {{- if .Values.console.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.console.ingress.host }}
+      secretName: {{ .Values.console.ingress.tls.secretName | default (printf "%s-console-tls" .Release.Name) }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.console.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ printf "%s-console" .Release.Name }}
+                port:
+                  number: 3000
+{{- end }}

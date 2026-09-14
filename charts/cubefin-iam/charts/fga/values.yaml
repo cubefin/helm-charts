@@ -1,0 +1,39 @@
+# Default values for fga — the Fine-Grained Authorization engine (ReBAC checks over the
+# age graph). These are usually left alone and driven from the parent chart's values.yaml
+# (global.oidc.* / fga.config.*) — see there first.
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/cubefin/iam-fga
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+
+config:
+  oidc:
+    # Falls back to global.oidc.authServerUrl/clientId (set in the parent
+    # chart) when left empty — only set these here if fga needs to trust a
+    # *different* IdP/client than the rest of the stack.
+    authServerUrl: ""
+    clientId: ""
+  datasource:
+    # Empty → defaults to the bundled age service ("<release>-age") at
+    # render time. Set only if pointing fga at an external Postgres+AGE
+    # instance instead of the bundled one.
+    host: ""
+    database: postgres
+    username: postgres
+    # Must match age.postgresql.password in the parent chart's values.yaml.
+    password: password
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

@@ -1,0 +1,34 @@
+{{- if .Values.edge.ingress.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "auth.fullname" . }}-edge
+  labels:
+    {{- include "auth.labels" . | nindent 4 }}
+  annotations:
+    {{- with .Values.edge.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/ssl-redirect: {{ .Values.edge.ingress.tls.enabled | quote }}
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "128k"
+spec:
+  ingressClassName: {{ .Values.edge.ingress.className | default "nginx" }}
+  {{- if .Values.edge.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.edge.ingress.host }}
+      secretName: {{ .Values.edge.ingress.tls.secretName | default (printf "%s-edge-tls" .Release.Name) }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.edge.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ printf "%s-edge" .Release.Name }}
+                port:
+                  number: 8080
+{{- end }}

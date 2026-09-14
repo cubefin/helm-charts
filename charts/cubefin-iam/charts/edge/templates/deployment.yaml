@@ -1,0 +1,149 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "edge.fullname" . }}
+  labels:
+    {{- include "edge.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "edge.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "edge.selectorLabels" . | nindent 8 }}
+      annotations:
+        redeploy-timestamp: "2026-02-12T16:21:00"
+    spec:
+      imagePullSecrets:
+        {{- if .Values.global.registryCredentials.enabled }}
+        - name: {{ .Values.global.registryCredentials.name }}
+        {{- end }}
+        {{- if .Values.global.imagePullSecrets }}
+        {{- toYaml .Values.global.imagePullSecrets | nindent 8 }}
+        {{- end }}
+      volumes:
+        - name: config-volume
+          configMap:
+            name: {{ include "edge.fullname" . }}-config
+        {{- if .Values.global.otel.enabled }}
+        - name: opentelemetry-auto-instrumentation
+          emptyDir: {}
+        {{- end }}
+      {{- if .Values.global.otel.enabled }}
+      initContainers:
+        - name: opentelemetry-auto-instrumentation
+          image: {{ .Values.global.otel.javaImage }}
+          command: ["cp", "/javaagent.jar", "/otel-auto-instrumentation/javaagent.jar"]
+          volumeMounts:
+            - name: opentelemetry-auto-instrumentation
+              mountPath: /otel-auto-instrumentation
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          {{- $oidcDiscoveryUrl := .Values.global.oidc.internalIssuer | default (ternary (printf "http://%s-dex:%v" .Release.Name .Values.global.dexPort) .Values.global.oidc.issuer .Values.global.dexEnabled) }}
+          env:
+            - name: QUARKUS_HTTP_PORT
+              value: "8080"
+            # Server-to-server discovery/JWKS fetch must use a URL this pod can
+            # actually reach. With the bundled Dex, that's the in-cluster
+            # Service — the public ingress hostname (global.oidc.issuer) often
+            # isn't reachable from inside the cluster (hairpin NAT / no route
+            # back through the ingress for a cluster's own public domain),
+            # which fails as "OIDC Server is not available" even though the
+            # browser-facing login works fine. The `iss`/`aud` claims embedded
+            # in tokens still carry the public issuer, so validation below
+            # stays pinned to global.oidc.issuer regardless of which URL was
+            # used to fetch the keys.
+            - name: QUARKUS_OIDC_AUTH_SERVER_URL
+              value: {{ $oidcDiscoveryUrl | quote }}
+            # Discovery ("/.well-known/openid-configuration") is disabled because
+            # the document Dex returns self-reports jwks_uri/token_endpoint/etc.
+            # using its own public `issuer`, not the internal URL we just fetched
+            # it from — Quarkus would otherwise follow those absolute URLs
+            # straight back to the unreachable public hostname. With discovery
+            # off, jwks-path is resolved relative to auth-server-url instead.
+            - name: QUARKUS_OIDC_DISCOVERY_ENABLED
+              value: "false"
+            - name: QUARKUS_OIDC_JWKS_PATH
+              value: {{ .Values.global.oidc.jwksPath | default "/keys" | quote }}
+            - name: QUARKUS_OIDC_TOKEN_ISSUER
+              value: {{ .Values.global.oidc.issuer | quote }}
+            - name: QUARKUS_OIDC_CLIENT_ID
+              value: {{ .Values.global.oidc.clientId | quote }}
+            - name: QUARKUS_OIDC_TOKEN_AUDIENCE
+              value: {{ .Values.global.oidc.clientId | quote }}
+            - name: MP_JWT_VERIFY_AUDIENCES
+              value: {{ .Values.global.oidc.clientId | quote }}
+            - name: QUARKUS_OIDC_CREDENTIALS_SECRET
+              value: {{ .Values.global.oidc.clientSecret | quote }}
+            - name: QUARKUS_DATASOURCE_REACTIVE_URL
+              value: "postgresql://{{ .Values.config.audit.db.host | default (printf "%s-age" .Release.Name) }}:5432/{{ .Values.config.audit.db.database }}"
+            - name: EDGE_FGA_URL
+              value: {{ .Values.config.fgaUrl | default (printf "http://%s-fga:8080" .Release.Name) | quote }}
+            - name: EDGE_ROUTES_0_URL
+              value: {{ .Values.config.fgaUrl | default (printf "http://%s-fga:8080/api/fga" .Release.Name) | quote }}
+            - name: QUARKUS_DATASOURCE_DB_KIND
+              value: postgresql
+            - name: QUARKUS_DATASOURCE_JDBC_URL
+              value: "jdbc:postgresql://{{ .Values.config.audit.db.host | default (printf "%s-age" .Release.Name) }}:5432/{{ .Values.config.audit.db.database }}"
+            - name: QUARKUS_DATASOURCE_USERNAME
+              value: {{ .Values.config.audit.db.username | quote }}
+            - name: QUARKUS_DATASOURCE_PASSWORD
+              value: {{ .Values.config.audit.db.password | quote }}
+            # JWKS location — path varies per OIDC provider, see global.oidc.jwksPath.
+            # Same in-cluster-reachability reasoning as QUARKUS_OIDC_AUTH_SERVER_URL above.
+            - name: MP_JWT_VERIFY_PUBLICKEY_LOCATION
+              value: "{{ $oidcDiscoveryUrl }}{{ .Values.global.oidc.jwksPath | default "/keys" }}"
+            - name: MP_JWT_VERIFY_ISSUER
+              value: {{ .Values.global.oidc.issuer | quote }}
+            # Allow all origins to fix 403 CORS issues
+            - name: QUARKUS_HTTP_CORS_ORIGINS
+              value: "/.*/"
+            {{- if .Values.global.otel.enabled }}
+            # Manual OTEL Instrumentation
+            - name: JAVA_TOOL_OPTIONS
+              value: "-javaagent:/otel-auto-instrumentation/javaagent.jar"
+            - name: OTEL_TRACES_EXPORTER
+              value: "otlp"
+            - name: OTEL_METRICS_EXPORTER
+              value: "none"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.global.otel.endpoint | quote }}
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "grpc"
+            - name: OTEL_SERVICE_NAME
+              value: "iam-edge"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "service.name=iam-edge,service.namespace={{ .Release.Namespace }}"
+            {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: config-volume
+              mountPath: /deployments/config
+            {{- if .Values.global.otel.enabled }}
+            - name: opentelemetry-auto-instrumentation
+              mountPath: /otel-auto-instrumentation
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /api/edge/config
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/edge/config
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10

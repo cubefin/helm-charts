@@ -1,0 +1,77 @@
+# Default values for dex.
+replicaCount: 1
+
+image:
+  repository: dexidp/dex
+  tag: "v2.45.0"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 5556
+
+ingress:
+  enabled: true
+  className: "nginx"
+  host: "idp.example.com"
+  annotations: {}
+  tls:
+    enabled: false
+    secretName: ""
+
+# Full external URL Dex will be reachable at — MUST match ingress.host + scheme
+# (tls.enabled ? https : http). This is what browsers redirect to and what
+# every client verifies as the token issuer, so it has to be a real, resolvable
+# hostname before install — there's no working "internal" default for this.
+issuer: "https://idp.example.com"
+
+# OIDC client registered in Dex for the whole cubefin-iam stack (console SPA +
+# edge/fga confidential services all share this one clientId, matching
+# global.oidc.clientId in the parent chart).
+staticClient:
+  id: "cubefin-client"
+  name: "CubeFin Auth"
+  # public: true → PKCE flow, no client_secret required/checked by Dex. This is
+  # what lets the browser-based console (which never sends a secret) complete
+  # login. Keep this true unless you know you need confidential-client checks.
+  public: true
+  # MUST include every host that performs an interactive browser login.
+  # Keep in sync with console.ingress.host (and edge.ingress.host if it ever
+  # does its own redirect-based login) in the parent chart's values.yaml.
+  redirectURIs:
+    - "https://auth.example.com"
+
+# Built-in "local" connector — demo accounts, no external IdP needed. This is
+# what makes `helm install` produce a stack you can actually log into.
+#
+# fga uses TOFU (Trust On First Use), *not* auto-admin-on-login: whoever logs
+# in while the system has zero admins sees a one-click "Claim Admin Access"
+# button in the console (src/components/shared/AuthShell.tsx) — nothing
+# programmatic decides this by login order on its own. Log in with
+# demoUsers[0] (below) first and click that button before handing out the
+# other accounts, or you'll end up with an admin-less install (or whichever
+# account someone else happens to click it with first).
+#
+# Plaintext `password` fields are shown only so they're discoverable in
+# `--show-values`/docs. Actual auth uses `hash` (bcrypt of the same
+# password) — change both together if you customize these.
+demoUsers:
+  - email: "demo@cubefin.io"
+    username: "demo"
+    password: "cubefin-demo"
+    hash: "$2b$12$KhXPTJLbmOKIVRahnKJOFO9zcHe.gck5l/jOxPyAN21bQNP8ACoce"
+    userID: "08a8684b-db88-4b73-90a9-3cd1661f5466"
+    # ^ log in with this one first — see the TOFU note above.
+  - email: "viewer@cubefin.io"
+    username: "viewer"
+    password: "cubefin-viewer"
+    hash: "$2b$12$Mum24jC3JdBOMz3zKL18.OLCjCVdNefh7EJubHgih5H7Ug4Cod6km"
+    userID: "1a6f2e3c-9b7d-4a10-8e4f-7c2d5b8a3f61"
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi

@@ -1,0 +1,54 @@
+# Default values for edge — the API gateway / security perimeter. OIDC settings
+# (issuer/clientId/clientSecret/jwksPath) come entirely from the parent chart's
+# global.oidc.* — there's no separate override here, edge/fga/console always share one
+# OIDC client.
+replicaCount: 1
+
+image:
+  repository: ghcr.io/cubefin/iam-edge
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+service:
+  type: ClusterIP
+  port: 8080
+
+config:
+  # Where the fga service lives. Empty → defaults to the bundled fga service
+  # ("http://<release>-fga:8080") at render time. Only set this if pointing
+  # at an fga instance outside this release.
+  fgaUrl: ""
+
+  # Audit trail — every access decision edge makes gets logged here. Uses the
+  # bundled age Postgres by default (db.host empty → "<release>-age").
+  audit:
+    db:
+      enabled: true
+      host: ""
+      database: postgres
+      username: postgres
+      # Must match age.postgresql.password in the parent chart's values.yaml.
+      password: change-me
+
+  # Gateway routing rules (Zuul/Spring Cloud Gateway style) — register your
+  # own backend services here to have edge front them with the same JWT
+  # validation + fga permission check as everything else. The fga route
+  # itself is always added automatically; you don't need (and shouldn't
+  # add) it here.
+  #
+  # Example:
+  #   additionalRoutes:
+  #     - name: billing
+  #       url: "http://billing-service:8080"   # omit to default to http://<release>-billing:8080
+  #       isPublic: false            # require a valid JWT (default)
+  #       skipAuthorization: false   # still run the fga permission check (default)
+  #       stripPrefix: 0             # path segments to strip before proxying
+  additionalRoutes: []
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

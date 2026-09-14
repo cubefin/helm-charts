@@ -1,0 +1,6 @@
+apiVersion: v2
+name: edge
+description: A Helm chart for CubeFin Edge Service (Quarkus Gateway)
+type: application
+version: 0.1.0
+appVersion: "latest"

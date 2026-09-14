@@ -1,0 +1,39 @@
+# Default values for console — the Next.js admin UI. OIDC login itself is driven by
+# global.oidc.issuer/clientId (set in the parent chart) — this file only has the bits
+# that are console-specific.
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/cubefin/iam-console
+  tag: latest
+  # "Always" so `:latest` actually gets refreshed on pod restarts during
+  # active development. Pin a real tag + switch to IfNotPresent for anything
+  # you care about being reproducible.
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 3000
+
+config:
+  oidc:
+    # OAuth2 scopes requested on login. issuer/clientId come from
+    # global.oidc.* — there's no separate override here since the browser
+    # login always uses the shared stack-wide client. Must match whatever
+    # your IdP's scopes_supported actually lists (bundled Dex: "groups", not
+    # "roles" — unrecognized scopes are a hard login-time error, not ignored).
+    scope: "openid profile email groups"
+  # Server-side base URL console's own Next.js middleware proxies /api/*
+  # requests to (see src/middleware.ts) — empty → defaults to the bundled
+  # edge service ("http://<release>-edge:8080") at render time. This is why
+  # edge doesn't need to be publicly exposed for the console to work.
+  edgeServiceUrl: ""
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi

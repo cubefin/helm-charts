@@ -1,0 +1,72 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "edge.fullname" . }}-config
+  labels:
+    {{- include "edge.labels" . | nindent 4 }}
+data:
+  application.yaml: |
+    quarkus:
+      http:
+        port: 8080
+        cors:
+          enabled: true
+          origins: "/.*/"
+          methods: GET,PUT,POST,DELETE,OPTIONS,PATCH
+          headers: accept, authorization, content-type, x-requested-with
+          access-control-allow-credentials: true
+      swagger-ui:
+        always-include: true
+        path: /api/swagger
+      oidc:
+        auth-server-url: {{ .Values.global.oidc.issuer }}
+        client-id: {{ .Values.global.oidc.clientId }}
+        credentials:
+          secret: {{ .Values.global.oidc.clientSecret }}
+    
+    mp:
+      jwt:
+        verify:
+          issuer: {{ .Values.global.oidc.issuer }}
+          publickey:
+            # Path varies per OIDC provider — see global.oidc.jwksPath (also
+            # set via MP_JWT_VERIFY_PUBLICKEY_LOCATION env var, which takes
+            # precedence over this file; kept in sync here for clarity).
+            location: {{ .Values.global.oidc.issuer }}{{ .Values.global.oidc.jwksPath | default "/keys" }}
+
+    edge:
+      fga:
+        # Internal communication with FGA service
+        url: {{ .Values.config.fgaUrl | default (printf "http://%s-fga:%d" .Release.Name (int .Values.service.port)) | quote }}
+        timeout-ms: 5000
+      
+      audit:
+        db:
+          enabled: true
+          host: {{ .Values.config.audit.db.host | default (printf "%s-age" .Release.Name) | quote }}
+          port: 5432
+          database: {{ .Values.config.audit.db.database | quote }}
+          username: {{ .Values.config.audit.db.username | quote }}
+          password: {{ .Values.config.audit.db.password | quote }}
+
+      # Gateway Routes (Zuul/Spring Cloud Gateway Style)
+      routes:
+        # 1. Mandatory System Route (FGA Service) - Always included for security
+        - name: fga
+          url: {{ .Values.config.fgaUrl | default (printf "http://%s-fga:8080/api/fga" .Release.Name) | quote }}
+          # isPublic is false by default for fga (secure)
+
+        # 2. Additional User-Defined Routes
+        {{- range .Values.config.additionalRoutes }}
+        - name: {{ .name }}
+          url: {{ if .url }}{{ .url }}{{ else }}{{ printf "http://%s-%s:8080%s" $.Release.Name .name (default "" .path) }}{{ end }}
+          {{- if .isPublic }}
+          is-public: true
+          {{- end }}
+          {{- if .skipAuthorization }}
+          skip-authorization: true
+          {{- end }}
+          {{- if .stripPrefix }}
+          strip-prefix: {{ .stripPrefix }}
+          {{- end }}
+        {{- end }}

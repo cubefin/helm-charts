@@ -1,0 +1,41 @@
+{{- $consoleScheme := ternary "https" "http" .Values.console.ingress.tls.enabled }}
+{{- $consoleUrl := printf "%s://%s" $consoleScheme .Values.console.ingress.host }}
+CubeFin IAM is deployed.
+
+{{- if .Values.console.ingress.enabled }}
+
+Console:  {{ $consoleUrl }}
+{{- else }}
+
+Console ingress is disabled — reach it via port-forward:
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ .Release.Name }}-console 3000:{{ .Values.console.service.port }}
+  then open http://localhost:3000
+{{- end }}
+
+{{- if .Values.dex.enabled }}
+
+Log in with the FIRST bundled demo account below, then click "Claim Admin Access" in the
+console (fga uses TOFU — nobody is admin until someone claims it; whoever clicks first wins,
+so log in with this one before handing out the others):
+{{- range $i, $u := .Values.dex.demoUsers }}
+  {{ if eq $i 0 }}→{{ else }} {{ end }} Email: {{ $u.email }}  Password: {{ $u.password }}
+{{- end }}
+
+⚠️  These are public demo logins — change dex.demoUsers (or set dex.enabled=false and point
+    global.oidc.* at your own identity provider) before exposing this install to anyone else.
+{{- else }}
+
+dex.enabled=false — make sure global.oidc.issuer/clientId/clientSecret point at a real,
+reachable OIDC provider, or login will not work.
+{{- end }}
+
+{{- if not .Values.edge.ingress.enabled }}
+
+edge has no public ingress (default) — console reaches it internally. Set
+edge.ingress.enabled=true if you're routing external services through edge.config.additionalRoutes.
+{{- end }}
+
+Check status:
+  kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
+
+Docs: https://github.com/cubefin/helm-charts/tree/main/charts/cubefin-iam

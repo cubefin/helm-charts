@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "fga.fullname" . }}-config
+  labels:
+    {{- include "fga.labels" . | nindent 4 }}
+data:
+  application.yaml: |
+    quarkus:
+      datasource:
+        db-kind: postgresql
+        username: {{ .Values.config.datasource.username | quote }}
+        password: {{ .Values.config.datasource.password | quote }}
+        jdbc:
+          url: "jdbc:postgresql://{{ .Values.config.datasource.host | default (printf "%s-age" .Release.Name) }}:5432/{{ .Values.config.datasource.database }}"
+
+      swagger-ui:
+        always-include: true
+        path: /api/fga/swagger
+      smallrye-openapi:
+        path: /api/fga/openapi
+
+      oidc:
+        auth-server-url: {{ .Values.global.oidc.issuer | quote }}
+        client-id: {{ .Values.config.oidc.clientId | default .Values.global.oidc.clientId | quote }}
+        token:
+          audience: [{{ .Values.config.oidc.clientId | default .Values.global.oidc.clientId | quote }}]
+        openapi:
+          security-scheme-enabled: false
+    
+      http:
+        port: 8080
+        cors:
+          enabled: true
+          origins: /http:\/\/localhost(:[0-9]+)?/,/http:\/\/127\.0\.0\.1(:[0-9]+)?/
+          methods: GET,PUT,POST,DELETE,OPTIONS,PATCH
+          headers: accept, authorization, content-type, x-requested-with
+          access-control-allow-credentials: true
+        auth:
+          permission:
+            public:
+              paths: /api/fga/init/status
+              policy: permit
+              methods: GET
+
+    mp:
+      openapi:
+        filter: io.cubefin.auth.fga.config.SwaggerSecurityFilter
+      jwt:
+        verify:
+          issuer: {{ .Values.global.oidc.issuer | quote }} # Use same URL as OIDC
+          publickey:
+            location: "{{ .Values.global.oidc.issuer }}{{ .Values.global.oidc.jwksPath | default "/keys" }}"

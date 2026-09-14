@@ -1,0 +1,93 @@
+# Live "demo" environment overrides for the cubefin-iam chart.
+# Recovered from the deployed Helm release (iam-demo namespace) since this
+# file didn't previously exist anywhere in the repo -- keep it here from now
+# on so a redeploy doesn't silently drop these values back to the chart's
+# auth.example.com / idp.example.com placeholders.
+console:
+  ingress:
+    host: "iam.demo.cubefin.io"
+
+dex:
+  ingress:
+    host: "idp.demo.cubefin.io"
+  issuer: "https://idp.demo.cubefin.io"
+  staticClient:
+    redirectURIs:
+      - "https://iam.demo.cubefin.io"
+      # Allows the console's local dev server (npm run dev) to authenticate
+      # against this live demo Dex instance. Remove if that's no longer needed.
+      - "http://localhost:3000"
+  # Full replacement list (Helm replaces, not merges, list values) -- the
+  # chart's own 2 defaults (demo/viewer) plus 10 org-chart demo accounts so
+  # the live demo shows a populated Users/Groups tree instead of one lonely
+  # admin. All 10 share one password; see charts/cubefin-iam/README.md's
+  # "라이브 데모" section for the account table. userID must stay in sync with
+  # the FGA seed script's Dex-sub precomputation (see fga/seed_demo_data.sh
+  # in the iam repo) -- changing a userID here without re-running that script
+  # breaks the login <-> FGA-graph identity link.
+  demoUsers:
+    - email: "demo@cubefin.io"
+      username: "demo"
+      password: "cubefin-demo"
+      hash: "$2b$12$KhXPTJLbmOKIVRahnKJOFO9zcHe.gck5l/jOxPyAN21bQNP8ACoce"
+      userID: "08a8684b-db88-4b73-90a9-3cd1661f5466"
+      # ^ log in with this one first — see the TOFU note in the chart README.
+    - email: "viewer@cubefin.io"
+      username: "viewer"
+      password: "cubefin-viewer"
+      hash: "$2b$12$Mum24jC3JdBOMz3zKL18.OLCjCVdNefh7EJubHgih5H7Ug4Cod6km"
+      userID: "1a6f2e3c-9b7d-4a10-8e4f-7c2d5b8a3f61"
+    - email: "alice.kim@demo.cubefin.io"
+      username: "alice.kim"
+      password: "cubefin-team"
+      hash: "$2b$12$/WhqfHJFxH/j8KdKYJp2Wuxu15AYPa//oExxypK.gaLGhgzRV1cTe"
+      userID: "b516ea3d-9485-4ae9-9904-260571b9ff60"
+    - email: "bob.lee@demo.cubefin.io"
+      username: "bob.lee"
+      password: "cubefin-team"
+      hash: "$2b$12$/WhqfHJFxH/j8KdKYJp2Wuxu15AYPa//oExxypK.gaLGhgzRV1cTe"
+      userID: "a5ca9f84-6d3a-40c0-a2b9-3d0a891442f6"
+    - email: "carol.park@demo.cubefin.io"
+      username: "carol.park"
+      password: "cubefin-team"
+      hash: "$2b$12$/WhqfHJFxH/j8KdKYJp2Wuxu15AYPa//oExxypK.gaLGhgzRV1cTe"
+      userID: "a26e10d3-c512-4fe5-a881-9d015e663e32"
+    - email: "dave.jung@demo.cubefin.io"
+      username: "dave.jung"
+      password: "cubefin-team"
+      hash: "$2b$12$/WhqfHJFxH/j8KdKYJp2Wuxu15AYPa//oExxypK.gaLGhgzRV1cTe"
+      userID: "8e8de0d5-048d-4bcd-bf3a-b25002161a04"
+    - email: "erin.choi@demo.cubefin.io"
+      username: "erin.choi"
+      password: "cubefin-team"
+      hash: "$2b$12$/WhqfHJFxH/j8KdKYJp2Wuxu15AYPa//oExxypK.gaLGhgzRV1cTe"
+      userID: "495a6ea5-0330-448e-b9fd-cabc9d4dd878"
+    - email: "frank.yoon@demo.cubefin.io"
+      username: "frank.yoon"
+      password: "cubefin-team"
+      hash: "$2b$12$/WhqfHJFxH/j8KdKYJp2Wuxu15AYPa//oExxypK.gaLGhgzRV1cTe"
+      userID: "ea649ce2-a1f2-4d5a-9433-ebebeb634427"
+    - email: "grace.han@demo.cubefin.io"
+      username: "grace.han"
+      password: "cubefin-team"
+      hash: "$2b$12$/WhqfHJFxH/j8KdKYJp2Wuxu15AYPa//oExxypK.gaLGhgzRV1cTe"
+      userID: "cbcde18e-8434-4f5b-b26c-9853d00d7bf3"
+    - email: "henry.oh@demo.cubefin.io"
+      username: "henry.oh"
+      password: "cubefin-team"
+      hash: "$2b$12$/WhqfHJFxH/j8KdKYJp2Wuxu15AYPa//oExxypK.gaLGhgzRV1cTe"
+      userID: "d30c8d24-4aa1-407d-aae1-f2a54c7b6f7c"
+    - email: "ivy.seo@demo.cubefin.io"
+      username: "ivy.seo"
+      password: "cubefin-team"
+      hash: "$2b$12$/WhqfHJFxH/j8KdKYJp2Wuxu15AYPa//oExxypK.gaLGhgzRV1cTe"
+      userID: "5f536bd2-65ad-41c1-8d13-8004050f9486"
+    - email: "jack.moon@demo.cubefin.io"
+      username: "jack.moon"
+      password: "cubefin-team"
+      hash: "$2b$12$/WhqfHJFxH/j8KdKYJp2Wuxu15AYPa//oExxypK.gaLGhgzRV1cTe"
+      userID: "98c5bd56-4721-425e-a7e4-fcc1b1d3fa62"
+
+global:
+  oidc:
+    issuer: "https://idp.demo.cubefin.io"
