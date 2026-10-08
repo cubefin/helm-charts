@@ -29,6 +29,20 @@ postgresql:
   # auto-resized.
   storage: 1Gi
 
+# pg_isready 프로브 타이밍. 기본 timeoutSeconds(1s)는 노드 I/O가 잠깐만 밀려도 넘겨서 liveness 실패 →
+# 재시작이 반복됐다 (iam-demo 114회, 2026-10-08). pg_isready는 가벼우니 여유 있게 둔다.
+probes:
+  liveness:
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
 resources:
   requests:
     cpu: 100m

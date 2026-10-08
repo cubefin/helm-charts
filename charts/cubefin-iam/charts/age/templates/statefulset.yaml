@@ -45,8 +45,7 @@ spec:
                 - {{ .Values.postgresql.user | quote }}
                 - -d
                 - {{ .Values.postgresql.db | quote }}
-            initialDelaySeconds: 30
-            periodSeconds: 10
+            {{- toYaml .Values.probes.liveness | nindent 12 }}
           readinessProbe:
             exec:
               command:
@@ -55,8 +54,7 @@ spec:
                 - {{ .Values.postgresql.user | quote }}
                 - -d
                 - {{ .Values.postgresql.db | quote }}
-            initialDelaySeconds: 5
-            periodSeconds: 10
+            {{- toYaml .Values.probes.readiness | nindent 12 }}
           {{- with .Values.resources }}
           resources:
             {{- toYaml . | nindent 12 }}

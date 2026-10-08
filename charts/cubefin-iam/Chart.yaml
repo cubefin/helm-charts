@@ -2,7 +2,7 @@ apiVersion: v2
 name: cubefin-iam
 description: CubeFin IAM — fine-grained ReBAC authorization engine (Edge + FGA + Console + Age + Dex)
 type: application
-version: 0.3.2
+version: 0.3.3
 appVersion: "1.0.0"
 home: https://www.cubefin.io
 sources:
@@ -19,7 +19,7 @@ maintainers:
     url: https://www.cubefin.io
 dependencies:
   - name: age
-    version: 0.1.0
+    version: 0.1.1
     repository: "file://./charts/age"
   - name: edge
     version: 0.1.0
